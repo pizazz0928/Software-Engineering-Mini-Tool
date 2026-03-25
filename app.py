@@ -31,6 +31,12 @@ ALLOWED_UNARYOPS = {
 
 MAX_INPUT_LENGTH = 5000
 COMPOSITE_TYPES = {"Dict", "List", "Tuple", "Set"}
+MAX_CODE_LENGTH = 8000
+ALLOWED_CODE_BINOPS = tuple(ALLOWED_BINOPS.keys())
+ALLOWED_CODE_UNARYOPS = tuple(ALLOWED_UNARYOPS.keys())
+ALLOWED_COMPARE_OPS = (ast.Eq, ast.NotEq, ast.Gt, ast.GtE, ast.Lt, ast.LtE)
+ALLOWED_BOOLOPS = (ast.And, ast.Or)
+SAFE_GLOBALS = {"__builtins__": {}}
 
 
 def type_name(value: Any) -> str:
@@ -227,6 +233,109 @@ def to_json_safe(value: Any) -> Any:
     return value
 
 
+def validate_python_code(tree: ast.AST) -> None:
+    """
+    Allow only a small, declarative Python subset for variable reflection.
+    """
+    allowed_nodes = (
+        ast.Module,
+        ast.Assign,
+        ast.AnnAssign,
+        ast.Expr,
+        ast.Name,
+        ast.Load,
+        ast.Store,
+        ast.Constant,
+        ast.List,
+        ast.Tuple,
+        ast.Set,
+        ast.Dict,
+        ast.BinOp,
+        ast.Add,
+        ast.Sub,
+        ast.Mult,
+        ast.Div,
+        ast.FloorDiv,
+        ast.Mod,
+        ast.Pow,
+        ast.UnaryOp,
+        ast.UAdd,
+        ast.USub,
+        ast.BoolOp,
+        ast.And,
+        ast.Or,
+        ast.Compare,
+        ast.Eq,
+        ast.NotEq,
+        ast.Gt,
+        ast.GtE,
+        ast.Lt,
+        ast.LtE,
+        ast.Subscript,
+        ast.Slice,
+        ast.IfExp,
+    )
+
+    for node in ast.walk(tree):
+        if not isinstance(node, allowed_nodes):
+            raise ValueError(f"Unsupported syntax: {type(node).__name__}")
+
+        if isinstance(node, ast.Assign):
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                raise ValueError("Only single variable assignment is supported")
+
+        if isinstance(node, ast.AnnAssign):
+            if not isinstance(node.target, ast.Name):
+                raise ValueError("Only named variables can be annotated")
+            if node.value is None:
+                raise ValueError("Annotated assignments must include a value")
+
+        if isinstance(node, ast.BinOp) and not isinstance(node.op, ALLOWED_CODE_BINOPS):
+            raise ValueError("Unsupported binary operator")
+
+        if isinstance(node, ast.UnaryOp) and not isinstance(node.op, ALLOWED_CODE_UNARYOPS):
+            raise ValueError("Unsupported unary operator")
+
+        if isinstance(node, ast.BoolOp) and not isinstance(node.op, ALLOWED_BOOLOPS):
+            raise ValueError("Unsupported boolean operator")
+
+        if isinstance(node, ast.Compare):
+            for op in node.ops:
+                if not isinstance(op, ALLOWED_COMPARE_OPS):
+                    raise ValueError("Unsupported comparison operator")
+
+
+def reflect_variable_from_code(code: str, variable_name: str) -> tuple[str, Any, dict[str, Any]]:
+    normalized_code, normalization_notes = normalize_user_input(code)
+    if not normalized_code.strip():
+        raise ValueError("Code input cannot be empty")
+    if len(normalized_code) > MAX_CODE_LENGTH:
+        raise ValueError(f"Code input is too long. Limit is {MAX_CODE_LENGTH} characters")
+    if not variable_name or not variable_name.isidentifier():
+        raise ValueError("Variable name must be a valid Python identifier")
+
+    try:
+        tree = ast.parse(normalized_code, mode="exec")
+    except SyntaxError as exc:
+        raise ValueError(f"Syntax error: {exc.msg}") from exc
+
+    validate_python_code(tree)
+
+    local_scope: dict[str, Any] = {}
+    compiled = compile(tree, "<reflection>", "exec")
+    exec(compiled, SAFE_GLOBALS, local_scope)
+
+    if variable_name not in local_scope:
+        raise ValueError(f"Variable '{variable_name}' was not found in the provided code")
+
+    value = local_scope[variable_name]
+    inferred_type = type_name(value)
+    details = build_type_details(value, parse_nested_strings=True)
+    if normalization_notes:
+        details["note"] = " | ".join(normalization_notes)
+    return inferred_type, value, details
+
+
 @app.route("/")
 def index() -> str:
     return render_template("index.html")
@@ -266,6 +375,33 @@ def analyze_variable():
         return jsonify(response), 200
     except Exception:
         logging.exception("Unexpected error in /api/analyze")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/reflect-variable", methods=["POST"])
+def reflect_variable():
+    try:
+        data = request.get_json(silent=True)
+        if not data or "code" not in data or "variable_name" not in data:
+            return jsonify({"error": "Missing 'code' or 'variable_name' in request"}), 400
+
+        code = data["code"]
+        variable_name = data["variable_name"]
+        if not isinstance(code, str) or not isinstance(variable_name, str):
+            return jsonify({"error": "'code' and 'variable_name' must be strings"}), 400
+
+        inferred_type, reflected_value, details = reflect_variable_from_code(code, variable_name.strip())
+        response = {
+            "variable_name": variable_name.strip(),
+            "inferred_type": inferred_type,
+            "parsed_value": to_json_safe(reflected_value),
+            "type_details": to_json_safe(details),
+        }
+        return jsonify(response), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        logging.exception("Unexpected error in /api/reflect-variable")
         return jsonify({"error": "Internal server error"}), 500
 
 

@@ -8,6 +8,7 @@ System Variable Type Analyzer is a small Software Engineering course project wit
 - Normalize mildly malformed user input before parsing
 - Infer common types such as Integer, Float, Boolean, String, List, Dictionary, and more
 - Recursively analyze nested fields inside composite values
+- Reflect the type of a named variable from a small Python code snippet
 - Parse JSON values when possible
 - Parse Python literals with `ast.literal_eval`
 - Safely evaluate simple arithmetic expressions such as `8 * (2 + 1)`
@@ -74,6 +75,47 @@ Request body:
 }
 ```
 
+### `POST /api/reflect-variable`
+
+Request body:
+
+```json
+{
+  "code": "port = \"5001\"\nenabled = \"true\"\nconfig = {\"port\": port, \"enabled\": enabled}",
+  "variable_name": "config"
+}
+```
+
+Example success response:
+
+```json
+{
+  "variable_name": "config",
+  "inferred_type": "Dict",
+  "parsed_value": {
+    "port": "5001",
+    "enabled": "true"
+  },
+  "type_details": {
+    "type": "Dict",
+    "fields": {
+      "port": {
+        "type": "Integer",
+        "value": 5001
+      },
+      "enabled": {
+        "type": "Boolean",
+        "value": true
+      }
+    },
+    "value": {
+      "port": "5001",
+      "enabled": "true"
+    }
+  }
+}
+```
+
 Example success response:
 
 ```json
@@ -125,6 +167,7 @@ Example response for an arithmetic expression:
 - `[1, 2, 3]`
 - `("a", "b", "c")`
 - `8 * (2 + 1)`
+- `port = "5001"\nenabled = "true"\nconfig = {"port": port, "enabled": enabled}`
 
 ## Notes
 

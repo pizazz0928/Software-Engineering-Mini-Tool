@@ -68,6 +68,63 @@
                 </div>
             </section>
         </section>
+
+        <section class="workspace-card">
+            <form id="reflection-form" class="analyzer-form">
+                <label for="code-input">Python code</label>
+                <textarea
+                    id="code-input"
+                    name="code"
+                    rows="8"
+                    placeholder='Example: config = {"port": "5001", "enabled": "true"}'
+                    required
+                ></textarea>
+
+                <label for="variable-name-input">Variable name</label>
+                <input
+                    id="variable-name-input"
+                    name="variable_name"
+                    type="text"
+                    placeholder="config"
+                    required
+                >
+
+                <div class="button-row">
+                    <button type="submit">Reflect variable</button>
+                    <button type="button" id="fill-code-example" class="secondary">Try code example</button>
+                </div>
+            </form>
+
+            <section class="result-panel" aria-live="polite">
+                <div class="result-header">
+                    <h2>Reflection Result</h2>
+                    <span id="reflection-status-badge" class="status-badge">Waiting</span>
+                </div>
+
+                <div class="result-grid">
+                    <article class="result-item">
+                        <h3>Variable Name</h3>
+                        <p id="reflection-variable-name">-</p>
+                    </article>
+                    <article class="result-item">
+                        <h3>Inferred Type</h3>
+                        <p id="reflection-type">-</p>
+                    </article>
+                    <article class="result-item">
+                        <h3>Value</h3>
+                        <pre id="reflection-value">-</pre>
+                    </article>
+                    <article class="result-item result-item-wide">
+                        <h3>Nested Type Details</h3>
+                        <pre id="reflection-details">-</pre>
+                    </article>
+                    <article class="result-item result-item-wide">
+                        <h3>Error / Note</h3>
+                        <p id="reflection-error">-</p>
+                    </article>
+                </div>
+            </section>
+        </section>
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>

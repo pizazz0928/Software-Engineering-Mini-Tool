@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Variable Type Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="hero-card">
+            <p class="eyebrow">Software Engineering Mini Tool</p>
+            <h1>System Variable Type Analyzer</h1>
+            <p class="lead">
+                Enter a value from an environment variable or configuration item and
+                let the tool infer its likely runtime type.
+            </p>
+        </section>
+
+        <section class="workspace-card">
+            <form id="analyzer-form" class="analyzer-form">
+                <label for="variable-input">Variable value</label>
+                <textarea
+                    id="variable-input"
+                    name="variable_value"
+                    rows="7"
+                    placeholder='Examples: 42, true, 3.14, {"name": "codex"}, [1, 2, 3], 8 * (2 + 1)'
+                    required
+                ></textarea>
+
+                <div class="button-row">
+                    <button type="submit">Analyze</button>
+                    <button type="button" id="fill-example" class="secondary">Try example</button>
+                </div>
+            </form>
+
+            <section class="result-panel" aria-live="polite">
+                <div class="result-header">
+                    <h2>Result</h2>
+                    <span id="status-badge" class="status-badge">Waiting</span>
+                </div>
+
+                <div class="result-grid">
+                    <article class="result-item">
+                        <h3>Inferred Type</h3>
+                        <p id="result-type">-</p>
+                    </article>
+                    <article class="result-item">
+                        <h3>Parsed Value</h3>
+                        <pre id="result-value">-</pre>
+                    </article>
+                    <article class="result-item">
+                        <h3>Original Input</h3>
+                        <pre id="result-input">-</pre>
+                    </article>
+                    <article class="result-item">
+                        <h3>Note</h3>
+                        <p id="result-warning">-</p>
+                    </article>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

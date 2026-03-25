@@ -5,7 +5,9 @@ System Variable Type Analyzer is a small Software Engineering course project wit
 ## Features
 
 - Analyze plain text input through a web interface
+- Normalize mildly malformed user input before parsing
 - Infer common types such as Integer, Float, Boolean, String, List, Dictionary, and more
+- Recursively analyze nested fields inside composite values
 - Parse JSON values when possible
 - Parse Python literals with `ast.literal_eval`
 - Safely evaluate simple arithmetic expressions such as `8 * (2 + 1)`
@@ -49,13 +51,14 @@ After the server starts, open [http://127.0.0.1:5001](http://127.0.0.1:5001).
 The backend checks the input in the following order:
 
 1. Empty input
-2. Integer
-3. Float
-4. Boolean
-5. Arithmetic expression
-6. JSON
-7. Python literal
-8. Fallback to String
+2. Input normalization
+3. Integer
+4. Float
+5. Boolean
+6. Arithmetic expression
+7. JSON
+8. Python literal
+9. Fallback to String
 
 This order helps the tool produce predictable type inference results for common configuration values.
 
@@ -75,9 +78,30 @@ Example success response:
 
 ```json
 {
-  "original_input": "true",
-  "inferred_type": "Boolean",
-  "parsed_value": true
+  "original_input": "{\"port\":\"5001\",\"enabled\":\"true\"}",
+  "normalized_input": "{\"port\":\"5001\",\"enabled\":\"true\"}",
+  "inferred_type": "Dict",
+  "parsed_value": {
+    "port": "5001",
+    "enabled": "true"
+  },
+  "type_details": {
+    "type": "Dict",
+    "fields": {
+      "port": {
+        "type": "Integer",
+        "value": 5001
+      },
+      "enabled": {
+        "type": "Boolean",
+        "value": true
+      }
+    },
+    "value": {
+      "port": "5001",
+      "enabled": "true"
+    }
+  }
 }
 ```
 
@@ -106,4 +130,5 @@ Example response for an arithmetic expression:
 
 - The tool is intended for learning and demonstration purposes.
 - Arithmetic evaluation is intentionally limited to simple numeric expressions for safety.
+- Composite values keep their original parsed structure while nested members get their own inferred type details.
 - This project focuses on determining the type of a given system variable, which matches the course requirement.

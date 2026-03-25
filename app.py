@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import logging
+import os
 import operator
 from typing import Any
 
@@ -27,6 +28,67 @@ ALLOWED_UNARYOPS = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
+
+MAX_INPUT_LENGTH = 5000
+COMPOSITE_TYPES = {"Dict", "List", "Tuple", "Set"}
+
+
+def type_name(value: Any) -> str:
+    if value is None:
+        return "None"
+    if isinstance(value, bool):
+        return "Boolean"
+    if isinstance(value, int):
+        return "Integer"
+    if isinstance(value, float):
+        return "Float"
+    if isinstance(value, str):
+        return "String"
+    if isinstance(value, dict):
+        return "Dict"
+    if isinstance(value, list):
+        return "List"
+    if isinstance(value, tuple):
+        return "Tuple"
+    if isinstance(value, set):
+        return "Set"
+    return type(value).__name__.capitalize()
+
+
+def normalize_user_input(raw_value: str) -> tuple[str, list[str]]:
+    """
+    Normalize punctuation and whitespace so mildly malformed input is easier to parse.
+    """
+    normalized = raw_value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    replacements = {
+        "“": '"',
+        "”": '"',
+        "‘": "'",
+        "’": "'",
+        "，": ",",
+        "：": ":",
+        "；": ";",
+        "（": "(",
+        "）": ")",
+        "【": "[",
+        "】": "]",
+        "｛": "{",
+        "｝": "}",
+    }
+    notes: list[str] = []
+
+    updated = normalized
+    for source, target in replacements.items():
+        updated = updated.replace(source, target)
+
+    if updated != normalized:
+        notes.append("Normalized quotes or punctuation in user input")
+
+    cleaned = "".join(ch for ch in updated if ch not in {"\u200b", "\ufeff"})
+    if cleaned != updated:
+        notes.append("Removed invisible characters from user input")
+
+    return cleaned, notes
 
 
 def safe_eval_expr(expr: str) -> int | float:
@@ -106,7 +168,63 @@ def determine_env_var_type(var_value: str) -> tuple[str, Any, str | None]:
     except (ValueError, SyntaxError):
         pass
 
+    bracket_pairs = {"{": "}", "[": "]", "(": ")"}
+    for opening, closing in bracket_pairs.items():
+        if value.count(opening) != value.count(closing):
+            return "String", var_value, "Input looks malformed: unmatched brackets"
+
     return "String", var_value, None
+
+
+def build_type_details(value: Any, parse_nested_strings: bool = True) -> dict[str, Any]:
+    """
+    Recursively describe composite values and infer nested member types.
+    """
+    if isinstance(value, str) and parse_nested_strings:
+        inferred_type, parsed_value, warning = determine_env_var_type(value)
+        details: dict[str, Any] = {
+            "type": inferred_type,
+            "value": parsed_value,
+        }
+        if warning:
+            details["note"] = warning
+        if inferred_type in COMPOSITE_TYPES:
+            nested = build_type_details(parsed_value, parse_nested_strings=True)
+            if "fields" in nested:
+                details["fields"] = nested["fields"]
+            if "items" in nested:
+                details["items"] = nested["items"]
+        return details
+
+    current_type = type_name(value)
+    details = {"type": current_type}
+
+    if isinstance(value, dict):
+        details["fields"] = {
+            str(key): build_type_details(item, parse_nested_strings=True)
+            for key, item in value.items()
+        }
+        details["value"] = value
+        return details
+
+    if isinstance(value, (list, tuple, set)):
+        items = list(value) if not isinstance(value, set) else sorted(value, key=repr)
+        details["items"] = [build_type_details(item, parse_nested_strings=True) for item in items]
+        details["value"] = list(value) if not isinstance(value, tuple) else list(value)
+        return details
+
+    details["value"] = value
+    return details
+
+
+def to_json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): to_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_json_safe(item) for item in value]
+    if isinstance(value, set):
+        return [to_json_safe(item) for item in sorted(value, key=repr)]
+    return value
 
 
 @app.route("/")
@@ -122,15 +240,28 @@ def analyze_variable():
             return jsonify({"error": "Missing 'variable_value' in request"}), 400
 
         raw_value = data["variable_value"]
-        inferred_type, parsed_value, warning = determine_env_var_type(raw_value)
+        if not isinstance(raw_value, str):
+            return jsonify({"error": "'variable_value' must be a string"}), 400
+
+        if len(raw_value) > MAX_INPUT_LENGTH:
+            return jsonify({"error": f"Input is too long. Limit is {MAX_INPUT_LENGTH} characters"}), 400
+
+        normalized_input, normalization_notes = normalize_user_input(raw_value)
+        inferred_type, parsed_value, warning = determine_env_var_type(normalized_input)
+        type_details = build_type_details(parsed_value, parse_nested_strings=True)
 
         response = {
             "original_input": raw_value,
+            "normalized_input": normalized_input,
             "inferred_type": inferred_type,
-            "parsed_value": parsed_value,
+            "parsed_value": to_json_safe(parsed_value),
+            "type_details": to_json_safe(type_details),
         }
+        warnings = [*normalization_notes]
         if warning:
-            response["warning"] = warning
+            warnings.append(warning)
+        if warnings:
+            response["warning"] = " | ".join(warnings)
 
         return jsonify(response), 200
     except Exception:
@@ -139,4 +270,5 @@ def analyze_variable():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    debug_enabled = os.getenv("FLASK_DEBUG", "0").lower() in {"1", "true", "yes", "on"}
+    app.run(host="0.0.0.0", port=5001, debug=debug_enabled)

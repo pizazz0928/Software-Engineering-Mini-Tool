@@ -6,9 +6,11 @@ const statusBadge = document.getElementById("status-badge");
 const resultType = document.getElementById("result-type");
 const resultValue = document.getElementById("result-value");
 const resultInput = document.getElementById("result-input");
+const resultNormalizedInput = document.getElementById("result-normalized-input");
 const resultWarning = document.getElementById("result-warning");
+const resultDetails = document.getElementById("result-details");
 
-const exampleValue = '{"enabled": true, "port": 5001, "rate": 0.75}';
+const exampleValue = '{"enabled":"true","port":"5001","rate":"0.75","servers":["1","2","3"]}';
 
 function setStatus(text, kind = "") {
     statusBadge.textContent = text;
@@ -44,7 +46,9 @@ form.addEventListener("submit", async (event) => {
     resultType.textContent = "-";
     resultValue.textContent = "-";
     resultInput.textContent = variableValue;
+    resultNormalizedInput.textContent = "-";
     resultWarning.textContent = "-";
+    resultDetails.textContent = "-";
 
     try {
         const response = await fetch("/api/analyze", {
@@ -63,12 +67,16 @@ form.addEventListener("submit", async (event) => {
         resultType.textContent = payload.inferred_type ?? "-";
         resultValue.textContent = renderJson(payload.parsed_value);
         resultInput.textContent = payload.original_input ?? "-";
+        resultNormalizedInput.textContent = payload.normalized_input ?? "-";
         resultWarning.textContent = payload.warning ?? "No additional note";
+        resultDetails.textContent = renderJson(payload.type_details);
         setStatus("Completed", "success");
     } catch (error) {
         resultType.textContent = "Error";
         resultValue.textContent = "-";
+        resultNormalizedInput.textContent = "-";
         resultWarning.textContent = error.message;
+        resultDetails.textContent = "-";
         setStatus("Failed", "error");
     }
 });
